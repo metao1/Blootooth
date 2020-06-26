@@ -1,4 +1,4 @@
-package com.metao.app;
+package com.metao.app.model;
 
 import java.util.ArrayList;
 import java.util.List;

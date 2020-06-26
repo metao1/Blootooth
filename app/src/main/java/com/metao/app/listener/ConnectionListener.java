@@ -1,12 +1,15 @@
-package com.metao.app;
+package com.metao.app.listener;
 
+import com.metao.app.model.BLEService;
 import com.polidea.rxandroidble2.RxBleConnection;
+
+import java.util.List;
 
 import io.reactivex.disposables.Disposable;
 
-public interface ConnectionInterface {
+public interface ConnectionListener {
 
-    void onConnected();
+    void onConnected(RxBleConnection connection);
 
     void onDisconnected(String eMsg);
 
@@ -23,4 +26,6 @@ public interface ConnectionInterface {
     void onFailure(Throwable e);
 
     void onSetup(Disposable disposable);
+
+    void onResolveBleServices(List<BLEService> bleServiceList);
 }

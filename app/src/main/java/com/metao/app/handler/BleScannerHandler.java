@@ -4,11 +4,12 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.le.ScanCallback;
 import android.bluetooth.le.ScanResult;
 
-import com.metao.app.DeviceConnection;
+import com.metao.app.model.DeviceConnection;
 import com.polidea.rxandroidble2.RxBleClient;
+import com.polidea.rxandroidble2.RxBleConnection;
 import com.polidea.rxandroidble2.RxBleDevice;
 
-import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -17,8 +18,8 @@ public class BleScannerHandler extends ScanCallback {
 
     private static final Object lock = new Object();
     private final RxBleClient rxBleClient;
-    private final ExecutorService executorService = Executors.newFixedThreadPool(100);
-    private final HashMap<String, DeviceConnection> devices = new HashMap<>();
+    private final ExecutorService executorService = Executors.newFixedThreadPool(5);
+    private final ConcurrentHashMap<String, DeviceConnection> devices = new ConcurrentHashMap<>();
     private final ActivityCallback callback;
 
     public BleScannerHandler(ActivityCallback callback, RxBleClient rxBleClient) {
@@ -27,9 +28,14 @@ public class BleScannerHandler extends ScanCallback {
     }
 
     @Override
+    public void onScanFailed(int errorCode) {
+        super.onScanFailed(errorCode);
+    }
+
+    @Override
     public void onScanResult(int callbackType, ScanResult result) {
+        super.onScanResult(callbackType, result);
         synchronized (lock) {
-            super.onScanResult(callbackType, result);
 
             BluetoothDevice newDevice = result.getDevice();
 
@@ -39,32 +45,34 @@ public class BleScannerHandler extends ScanCallback {
             if (deviceName == null) {
                 return;
             }
-
             DeviceConnection dev = devices.get(deviceAddress);
             if (dev != null) {
-                callback.updateDevice(dev.getDeviceInfo().setRssi(newRssi));
+                callback.updateDevice(dev.getDeviceInfo().setRssi(newRssi).setNewState(dev.getState()));
+                if (dev.getState().equals(RxBleConnection.RxBleConnectionState.DISCONNECTED)) {
+                    this.devices.remove(deviceAddress);
+                }
             } else {
                 addToFoundDeviceList(deviceAddress);
             }
         }
+
     }
 
     private void addToFoundDeviceList(String deviceAddress) {
         RxBleDevice bleDevice = rxBleClient.getBleDevice(deviceAddress);
         DeviceConnection deviceConnection = new DeviceConnection(bleDevice);
         createNewDevice(deviceConnection);
-        callback.newDevice(deviceConnection.getDeviceInfo());
     }
 
 
     private void createNewDevice(DeviceConnection deviceConnection) {
-        if (this.devices.get(deviceConnection.getDeviceAddress()) != null) {
-            return;
-        }
         if (!devices.containsKey(deviceConnection.getDeviceAddress())) {
             this.devices.put(deviceConnection.getDeviceAddress(), deviceConnection);
             BluetoothConnector deviceConnectionFuture = new BluetoothConnector(callback, deviceConnection);
-            executorService.execute(deviceConnectionFuture);
+            if (!(executorService.isShutdown() || executorService.isTerminated())) {
+                executorService.execute(deviceConnectionFuture);
+                callback.newDevice(deviceConnection.getDeviceInfo());
+            }
         }
     }
 
@@ -81,13 +89,15 @@ public class BleScannerHandler extends ScanCallback {
     }
 
     private void stopExecutorService() {
-        executorService.shutdown();
-        try {
-            if (!executorService.awaitTermination(800, TimeUnit.MILLISECONDS)) {
+        if (executorService != null) {
+            executorService.shutdown();
+            try {
+                if (!executorService.awaitTermination(800, TimeUnit.MILLISECONDS)) {
+                    executorService.shutdownNow();
+                }
+            } catch (InterruptedException e) {
                 executorService.shutdownNow();
             }
-        } catch (InterruptedException e) {
-            executorService.shutdownNow();
         }
     }
 }

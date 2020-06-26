@@ -1,4 +1,4 @@
-package com.metao.app;
+package com.metao.app.model;
 
 public enum NbCommands {
     MASTER_TO_M365(0x20),

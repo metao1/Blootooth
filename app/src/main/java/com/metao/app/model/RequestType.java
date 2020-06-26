@@ -1,4 +1,4 @@
-package com.metao.app;
+package com.metao.app.model;
 
 public enum RequestType {
     VOLTAGE, AMEPERE, DISTANCE, SPEED, SUPERMASTER, SUPERBATTERY, LOCK, CRUISE, LIGHT, RECOVERY, BATTERYLIFE, NOCOUNT

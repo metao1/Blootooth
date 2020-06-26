@@ -5,44 +5,49 @@ import android.util.Log;
 
 import androidx.annotation.RequiresApi;
 
-import com.metao.app.ConnectionInterface;
-import com.metao.app.Constants;
-import com.metao.app.DeviceConnection;
+import com.metao.app.listener.ConnectionListener;
+import com.metao.app.model.DeviceConnection;
+import com.metao.app.model.BLEService;
 import com.polidea.rxandroidble2.RxBleConnection;
 
 import java.util.Base64;
+import java.util.List;
 
 import io.reactivex.disposables.Disposable;
 
+import static com.metao.app.model.Constants.TAG;
+
 public final class BluetoothConnector implements Runnable {
 
-    private final ConnectionInterfaceSetup connectionInterfaceSetup;
+    private final ConnectionListenerSetup connectionInterfaceSetup;
     private final DeviceConnection deviceConnection;
 
     public BluetoothConnector(ActivityCallback ac, DeviceConnection deviceConnection) {
         this.deviceConnection = deviceConnection;
-        connectionInterfaceSetup = new ConnectionInterfaceSetup(ac, deviceConnection);
+        connectionInterfaceSetup = new ConnectionListenerSetup(ac, deviceConnection);
     }
 
     @Override
     public void run() {
+        Log.d(TAG, "Started to setup connection to " + deviceConnection.getDeviceAddress());
         this.deviceConnection.setupConnection(connectionInterfaceSetup);
     }
 
-    private class ConnectionInterfaceSetup implements ConnectionInterface {
+    private class ConnectionListenerSetup implements ConnectionListener {
 
         private final DeviceConnection deviceConnection;
         private final ActivityCallback callback;
 
-        public ConnectionInterfaceSetup(ActivityCallback callback, DeviceConnection dc) {
+        public ConnectionListenerSetup(ActivityCallback callback, DeviceConnection dc) {
             this.deviceConnection = dc;
             this.callback = callback;
         }
 
+        @RequiresApi(api = Build.VERSION_CODES.O)
         @Override
-        public void onConnected() {
+        public void onConnected(RxBleConnection rxBleConnection) {
             callback.updateDevice(deviceConnection.getDeviceInfo());
-            establishConnection(deviceConnection);
+            establishConnection(deviceConnection, rxBleConnection);
         }
 
         @Override
@@ -68,7 +73,9 @@ public final class BluetoothConnector implements Runnable {
         @RequiresApi(api = Build.VERSION_CODES.O)
         @Override
         public void onReadSuccess(byte[] bytes) {
-            callback.updateDevice(deviceConnection.getDeviceInfo().setReadData(Base64.getEncoder().encodeToString(bytes)));
+            if (bytes != null && bytes.length > 0) {
+                callback.updateDevice(deviceConnection.getDeviceInfo().setReadData(Base64.getEncoder().encodeToString(bytes)));
+            }
         }
 
         @Override
@@ -85,19 +92,23 @@ public final class BluetoothConnector implements Runnable {
         public void onSetup(Disposable disposable) {
 
         }
+
+        @Override
+        public void onResolveBleServices(List<BLEService> bleServiceList) {
+            callback.retrieveBleServices(bleServiceList);
+        }
     }
 
-    private void establishConnection(DeviceConnection deviceConnection) {
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    private void establishConnection(DeviceConnection deviceConnection, RxBleConnection rxBleConnection) {
         if (deviceConnection != null) {
-            while (deviceConnection.getAllCommands().hasNext()) {
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                Log.i(Constants.TAG, "running commands ->" + deviceConnection.getDeviceAddress());
-                deviceConnection.runNextCommand();
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
+            deviceConnection.readServices(rxBleConnection);
+            Log.i(TAG, "running commands ->" + deviceConnection.getDeviceAddress());
         }
     }
 //
